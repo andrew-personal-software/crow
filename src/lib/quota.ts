@@ -15,7 +15,9 @@ export const invalidate = (owner: string) => cache.delete(ownerDir(owner));
 
 /** Per-user override in DATA_DIR/quotas.json: { "<username>": <megabytes> }. */
 export async function limit(owner: string): Promise<number> {
-  const overrides = await fs.readFile(path.join(dataDir(), "quotas.json"), "utf8").then(JSON.parse, () => ({}));
+  const overrides = await fs
+    .readFile(path.join(dataDir(), "quotas.json"), "utf8").then(JSON.parse)
+    .catch(() => ({}));
   const mb = overrides[owner];
   return (typeof mb === "number" ? mb : DEFAULT_MB) * MB;
 }

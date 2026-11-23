@@ -157,8 +157,18 @@ export async function renameCanvas(owner: string, id: string, name: string) {
   await updateCanvas(owner, id, (doc) => ({ ...doc, name }));
 }
 
+const assetsOf = (doc: CanvasDoc | null) =>
+  new Set((doc?.nodes ?? []).flatMap((n) => (n.type === "file" && /^assets\/[^/\\]+$/.test(n.file) ? [n.file] : [])));
+
+/** Deletes the board and any of its asset files that no other board of this owner uses. */
 export async function deleteCanvas(owner: string, id: string) {
+  const mine = assetsOf((await loadCanvas(owner, id))?.doc ?? null);
   await fs.rm(canvasPath(owner, id), { force: true });
+  if (mine.size) {
+    const others = await listCanvases(owner);
+    for (const o of others) for (const a of assetsOf((await loadCanvas(owner, o.id))?.doc ?? null)) mine.delete(a);
+    for (const a of mine) await fs.rm(path.join(ownerDir(owner), path.normalize(a)), { force: true });
+  }
   invalidate(owner);
 }
 

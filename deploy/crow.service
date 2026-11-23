@@ -11,7 +11,7 @@ WorkingDirectory=/opt/crow/current
 Environment=NODE_ENV=production
 Environment=PORT=@PORT@
 Environment=DATA_DIR=/var/lib/crow
-EnvironmentFile=-/etc/crow/crow.env
+EnvironmentFile=/etc/crow/crow.env
 ExecStart=@NODE_BIN@ node_modules/next/dist/bin/next start -H 127.0.0.1 -p ${PORT}
 Restart=on-failure
 RestartSec=2

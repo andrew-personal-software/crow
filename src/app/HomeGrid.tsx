@@ -28,7 +28,10 @@ export default function HomeGrid({ canvases, owner, owners, storage }: { canvase
 
   async function create() {
     const name = prompt("Canvas name")?.trim();
-    if (name) router.push(`/c/${await createCanvasAction(name)}`);
+    if (!name) return;
+    const r = await createCanvasAction(name);
+    if ("error" in r) alert(r.error);
+    else router.push(`/c/${r.id}`);
   }
 
   async function rename(c: CanvasSummary) {

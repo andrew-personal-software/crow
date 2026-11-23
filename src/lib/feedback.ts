@@ -23,10 +23,16 @@ type Input = { text: string; board?: string; taskId?: string; files: File[] };
 
 type State = Record<string, { day: string; n: number; tasks: string[] }>;
 const stateFile = () => path.join(dataDir(), "feedback.json");
-const load = (): Promise<State> => fs.readFile(stateFile(), "utf8").then(JSON.parse, () => ({}));
+const load = (): Promise<State> =>
+  fs
+    .readFile(stateFile(), "utf8")
+    .then(JSON.parse)
+    .catch(() => ({}));
 async function save(all: State) {
   await fs.mkdir(dataDir(), { recursive: true });
-  await fs.writeFile(stateFile(), JSON.stringify(all));
+  const tmp = `${stateFile()}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(all));
+  await fs.rename(tmp, stateFile());
 }
 
 /** Counts a message for today (429 past the daily limit). State lives in DATA_DIR/feedback.json. */
@@ -42,7 +48,8 @@ async function count(username: string) {
 /** A retry may only add files to a task this user's earlier message made. */
 async function remember(username: string, taskId: string) {
   const all = await load();
-  all[username].tasks = [...all[username].tasks, taskId].slice(-50);
+  const cur = (all[username] ??= { day: "", n: 0, tasks: [] });
+  cur.tasks = [...cur.tasks, taskId].slice(-50);
   await save(all);
 }
 
@@ -65,7 +72,7 @@ export async function sendFeedback(id: Identity, input: Input): Promise<{ taskId
     await count(id.username);
     const reporter = hasSparrow(id) ? id.username : undefined;
     const site = (process.env.CROW_PUBLIC_URL ?? "https://crow.andrewminghanjiang.com").replace(/\/+$/, "");
-    const lines = [text, "", "---", ...(reporter ? [`Reporter: ${reporter}`] : []), ...(input.board ? [`Board: ${site}/c/${input.board}`] : []), `Crow: ${VERSION}`];
+    const lines = [`Reporter: ${reporter ?? "none"}`, ...(input.board ? [`Board: ${site}/c/${input.board}`] : []), `Crow: ${VERSION}`, "---", text];
     const res = await sparrow("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

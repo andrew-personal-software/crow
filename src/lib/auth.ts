@@ -16,7 +16,10 @@ const USERNAME = /^[a-z0-9-]+$/;
 /** Reads the user Authentik put in the headers. Without CROW_PROXY_SECRET (dev only) it uses CROW_DEV_USER. */
 export function identityFrom(h: Headers): Identity {
   const secret = process.env.CROW_PROXY_SECRET;
-  if (!secret) return { username: process.env.CROW_DEV_USER ?? "dev", admin: true, groups: ["crow-admin"] };
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") throw new AuthError(401, "server misconfigured: CROW_PROXY_SECRET is not set");
+    return { username: process.env.CROW_DEV_USER ?? "dev", admin: true, groups: ["crow-admin"] };
+  }
   if (h.get("x-crow-proxy-secret") !== secret) throw new AuthError(401, "not signed in");
   const username = h.get("x-authentik-username");
   if (!username) throw new AuthError(401, "not signed in");

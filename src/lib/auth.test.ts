@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthError, hasSparrow, identityFrom } from "./auth";
 
 const h = (o: Record<string, string>) => new Headers(o);
 const ok = { "x-crow-proxy-secret": "s", "x-authentik-username": "bob", "x-authentik-groups": "crow-user|sparrow-user" };
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   delete process.env.CROW_PROXY_SECRET;
   delete process.env.CROW_DEV_USER;
 });
@@ -32,6 +33,11 @@ describe("identityFrom", () => {
   it("makes crow-admin an admin", () => {
     process.env.CROW_PROXY_SECRET = "s";
     expect(identityFrom(h({ ...ok, "x-authentik-groups": "crow-admin" })).admin).toBe(true);
+  });
+
+  it("fails closed in production when the secret is missing", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(() => identityFrom(h(ok))).toThrowError(expect.objectContaining({ status: 401 }));
   });
 
   it("uses CROW_DEV_USER when no secret is configured", () => {

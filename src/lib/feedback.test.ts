@@ -29,13 +29,16 @@ describe("sendFeedback", () => {
     const body = JSON.parse(created()[0].init.body as string);
     expect(body).toMatchObject({ project: "CROW", title: "Zoom is jumpy", reporter: "ann" });
     expect(body.body).toContain("more detail");
+    expect(body.body.startsWith("Reporter: ann")).toBe(true);
     expect(body.body).toContain("/c/b1");
     expect(calls.some((c) => c.url.endsWith("/api/tasks/CROW-1/attachments"))).toBe(true);
   });
 
   it("sends no reporter for a user without sparrow access", async () => {
     await sendFeedback(eve, { text: "hi", files: [] });
-    expect(JSON.parse(created()[0].init.body as string).reporter).toBeUndefined();
+    const sent = JSON.parse(created()[0].init.body as string);
+    expect(sent.reporter).toBeUndefined();
+    expect(sent.body.startsWith("Reporter: none")).toBe(true);
   });
 
   it("retries with a task id without making a second task", async () => {
@@ -57,6 +60,11 @@ describe("sendFeedback", () => {
   it("stops at 20 messages a day", async () => {
     for (let i = 0; i < 20; i++) await sendFeedback(ann, { text: "hi", files: [] });
     await expect(sendFeedback(ann, { text: "hi", files: [] })).rejects.toMatchObject({ status: 429 });
+  });
+
+  it("survives a damaged feedback.json", async () => {
+    await fs.writeFile(path.join(process.env.DATA_DIR!, "feedback.json"), "{oops");
+    await expect(sendFeedback(ann, { text: "hi", files: [] })).resolves.toMatchObject({ taskId: "CROW-1" });
   });
 
   it("rejects empty text and too many files", async () => {
