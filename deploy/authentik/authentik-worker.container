@@ -1,6 +1,7 @@
 [Unit]
 Description=Authentik worker
-After=network-online.target postgresql.service
+After=network-online.target postgres.service
+Wants=postgres.service
 
 [Container]
 Image=ghcr.io/goauthentik/server:2025.10
