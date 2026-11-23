@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { ownerFrom } from "@/lib/auth";
+import { QuotaError } from "@/lib/quota";
 import { type Change, applyChanges } from "@/lib/diff";
 import { deleteCanvas, loadCanvas, renameCanvas, updateCanvas } from "@/lib/store";
 
@@ -26,7 +27,8 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/canvas/[id
     const version = await updateCanvas(ownerFrom(request.headers), id, (doc) => applyChanges(doc, changes, "after"));
     if (!version) return new Response("not found", { status: 404 });
     return new Response(null, { status: 204, headers: { "x-version": version } });
-  } catch {
+  } catch (e) {
+    if (e instanceof QuotaError) return Response.json({ error: e.message }, { status: e.status });
     return new Response("save failed", { status: 500 });
   }
 }

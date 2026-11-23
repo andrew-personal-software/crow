@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
 import { nanoid, customAlphabet } from "nanoid";
+import { assertRoom, invalidate } from "./quota";
 import type { CanvasDoc, CanvasSummary } from "./canvas";
 
 const ID = /^[a-z0-9-]+$/;
@@ -117,9 +118,12 @@ export async function writeCanvas(owner: string, id: string, doc: CanvasDoc, bas
       if (cur !== null && version(cur) !== base) throw new Conflict();
     }
     const raw = JSON.stringify(doc, null, "\t");
+    const before = await fs.stat(file).then((s) => s.size, () => 0);
+    await assertRoom(owner, raw.length - before);
     const tmp = `${file}.${suffix()}.tmp`;
     await fs.writeFile(tmp, raw);
     await fs.rename(tmp, file);
+    invalidate(owner);
     return version(raw);
   });
 }
@@ -155,12 +159,15 @@ export async function renameCanvas(owner: string, id: string, name: string) {
 
 export async function deleteCanvas(owner: string, id: string) {
   await fs.rm(canvasPath(owner, id), { force: true });
+  invalidate(owner);
 }
 
 export async function saveAsset(owner: string, file: File): Promise<string> {
+  await assertRoom(owner, file.size);
   await fs.mkdir(assetsDir(owner), { recursive: true });
   const safe = file.name.replace(/[^\w.-]+/g, "_").slice(-80) || "file";
   const name = `${nanoid(8)}-${safe}`;
   await fs.writeFile(path.join(assetsDir(owner), name), Buffer.from(await file.arrayBuffer()));
+  invalidate(owner);
   return `assets/${name}`;
 }

@@ -15,7 +15,7 @@ function ago(ms: number) {
   return `${Math.floor(s / 604800)}w ago`;
 }
 
-export default function HomeGrid({ canvases, owner, owners }: { canvases: CanvasSummary[]; owner: string; owners?: string[] }) {
+export default function HomeGrid({ canvases, owner, owners, storage }: { canvases: CanvasSummary[]; owner: string; owners?: string[]; storage: string }) {
   const router = useRouter();
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
@@ -65,6 +65,7 @@ export default function HomeGrid({ canvases, owner, owners }: { canvases: Canvas
             ))}
           </select>
         )}
+        <span className="text-sm text-stone-400">{storage}</span>
         <button
           onClick={create}
           className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700"
