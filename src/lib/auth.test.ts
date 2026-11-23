@@ -1,0 +1,46 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { AuthError, hasSparrow, identityFrom } from "./auth";
+
+const h = (o: Record<string, string>) => new Headers(o);
+const ok = { "x-crow-proxy-secret": "s", "x-authentik-username": "bob", "x-authentik-groups": "crow-user|sparrow-user" };
+
+afterEach(() => {
+  delete process.env.CROW_PROXY_SECRET;
+  delete process.env.CROW_DEV_USER;
+});
+
+describe("identityFrom", () => {
+  it("rejects a request without the proxy secret", () => {
+    process.env.CROW_PROXY_SECRET = "s";
+    const { "x-crow-proxy-secret": _, ...forged } = ok;
+    expect(() => identityFrom(h(forged))).toThrowError(expect.objectContaining({ status: 401 }));
+  });
+
+  it("reads username and groups", () => {
+    process.env.CROW_PROXY_SECRET = "s";
+    const id = identityFrom(h(ok));
+    expect(id).toMatchObject({ username: "bob", admin: false });
+    expect(hasSparrow(id)).toBe(true);
+  });
+
+  it("rejects unsafe usernames", () => {
+    process.env.CROW_PROXY_SECRET = "s";
+    for (const bad of ["../x", "A b"]) {
+      expect(() => identityFrom(h({ ...ok, "x-authentik-username": bad }))).toThrowError(expect.objectContaining({ status: 403 }));
+    }
+  });
+
+  it("makes crow-admin an admin", () => {
+    process.env.CROW_PROXY_SECRET = "s";
+    expect(identityFrom(h({ ...ok, "x-authentik-groups": "crow-admin" })).admin).toBe(true);
+  });
+
+  it("uses CROW_DEV_USER when no secret is configured", () => {
+    process.env.CROW_DEV_USER = "dana";
+    expect(identityFrom(h({}))).toMatchObject({ username: "dana", admin: true });
+  });
+});
+
+it("AuthError carries a status", () => {
+  expect(new AuthError(401, "x").status).toBe(401);
+});
