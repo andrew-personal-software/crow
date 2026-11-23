@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { CanvasSummary } from "@/lib/canvas";
+import FeedbackButton from "@/components/FeedbackButton";
 import { actAsAction, createCanvasAction, deleteCanvasAction, renameCanvasAction } from "./actions";
 
 function ago(ms: number) {
@@ -66,6 +67,7 @@ export default function HomeGrid({ canvases, owner, owners, storage }: { canvase
           </select>
         )}
         <span className="text-sm text-stone-400">{storage}</span>
+        <FeedbackButton className="rounded-md px-3 py-1.5 text-sm hover:bg-stone-100" />
         <button
           onClick={create}
           className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700"

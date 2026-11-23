@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import FeedbackButton from "../FeedbackButton";
 
 export type Tool = "select" | "note";
 
@@ -15,9 +16,10 @@ type Props = {
   onTool: (t: Tool) => void;
   onResetZoom: () => void;
   onFiles: (files: File[]) => void;
+  board: string;
 };
 
-export default function Toolbar({ tool, zoom, onTool, onResetZoom, onFiles }: Props) {
+export default function Toolbar({ tool, zoom, onTool, onResetZoom, onFiles, board }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const btn = "rounded-md px-3 py-1.5 text-sm hover:bg-stone-100";
   return (
@@ -44,6 +46,7 @@ export default function Toolbar({ tool, zoom, onTool, onResetZoom, onFiles }: Pr
           e.target.value = "";
         }}
       />
+      <FeedbackButton board={board} className={btn} />
       <button className={`${btn} w-16 tabular-nums text-stone-500`} onClick={onResetZoom} title="Reset zoom">
         {Math.round(zoom * 100)}%
       </button>

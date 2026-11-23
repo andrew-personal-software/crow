@@ -597,6 +597,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
           zoom={view.zoom}
           onTool={setTool}
           onResetZoom={resetZoom}
+          board={id}
           onFiles={(files) => addFiles(files, viewportCenter())}
         />
       </div>
