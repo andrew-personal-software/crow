@@ -16,9 +16,13 @@ pg psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='authentik'" |
   || pg createdb -U postgres -O authentik authentik
 
 mkdir -p /var/lib/authentik/media /var/lib/authentik/templates /var/backups/authentik /etc/containers/systemd
+# The authentik image runs as uid 1000 and writes to these.
+chown -R 1000:1000 /var/lib/authentik/media /var/lib/authentik/templates
 install -m 644 "$here"/authentik-server.container "$here"/authentik-worker.container /etc/containers/systemd/
 install -m 755 "$here"/backup.sh /usr/local/bin/authentik-backup
 install -m 644 "$here"/authentik-backup.service "$here"/authentik-backup.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now authentik-server authentik-worker authentik-backup.timer
+# Quadlet units are generated, so they cannot be enabled: [Install] in the .container file starts them at boot.
+systemctl start authentik-server authentik-worker
+systemctl enable --now authentik-backup.timer
 echo "Authentik starting on 127.0.0.1:9000. Add Caddyfile.snippet to Caddy, then open https://auth.andrewminghanjiang.com/if/flow/initial-setup/"
