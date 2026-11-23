@@ -131,7 +131,7 @@ async function apply(doc: CanvasDoc, op: Op, ref: (r: string) => string): Promis
 }
 
 /** Applies all ops in one load + save, or none if any fails. */
-export async function applyOps(id: string, ops: Op[]) {
+export async function applyOps(owner: string, id: string, ops: Op[]) {
   let results: object[] = [];
   const ref = (r: string) => {
     const m = /^\$(\d+)$/.exec(r);
@@ -139,7 +139,7 @@ export async function applyOps(id: string, ops: Op[]) {
     const made = results[Number(m[1])];
     return made && "id" in made ? (made.id as string) : fail(`${r} has no id`);
   };
-  const saved = await updateCanvas(id, async (doc) => {
+  const saved = await updateCanvas(owner, id, async (doc) => {
     results = [];
     for (const op of ops) results.push(await apply(doc, op, ref));
   }).catch((e) => (e instanceof Conflict ? fail(e.message) : Promise.reject(e)));

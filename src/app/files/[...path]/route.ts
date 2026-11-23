@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { ownerFrom } from "@/lib/auth";
 import { resolveDataPath } from "@/lib/store";
 
 const TYPES: Record<string, string> = {
@@ -21,9 +22,9 @@ const TYPES: Record<string, string> = {
   ".md": "text/plain; charset=utf-8",
 };
 
-export async function GET(_: Request, ctx: RouteContext<"/files/[...path]">) {
+export async function GET(request: Request, ctx: RouteContext<"/files/[...path]">) {
   const { path: parts } = await ctx.params;
-  const full = resolveDataPath(parts.map(decodeURIComponent).join("/"));
+  const full = resolveDataPath(ownerFrom(request.headers), parts.map(decodeURIComponent).join("/"));
   if (!full) return new Response("not found", { status: 404 });
   try {
     const body = await fs.readFile(full);

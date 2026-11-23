@@ -12,8 +12,7 @@ afterEach(() => {
 describe("identityFrom", () => {
   it("rejects a request without the proxy secret", () => {
     process.env.CROW_PROXY_SECRET = "s";
-    const { "x-crow-proxy-secret": _, ...forged } = ok;
-    expect(() => identityFrom(h(forged))).toThrowError(expect.objectContaining({ status: 401 }));
+    expect(() => identityFrom(h({ ...ok, "x-crow-proxy-secret": "wrong" }))).toThrowError(expect.objectContaining({ status: 401 }));
   });
 
   it("reads username and groups", () => {

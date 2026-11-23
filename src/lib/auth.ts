@@ -25,6 +25,16 @@ export function identityFrom(h: Headers): Identity {
   return { username, admin: groups.includes("crow-admin"), groups };
 }
 
+/** Whose folder this request works in. An admin can act as another user with the crow-as cookie or X-Crow-As header. */
+export function ownerFrom(h: Headers): string {
+  const id = identityFrom(h);
+  if (!id.admin) return id.username;
+  const as = h.get("x-crow-as") ?? /(?:^|;\s*)crow-as=([^;]+)/.exec(h.get("cookie") ?? "")?.[1];
+  return as && USERNAME.test(as) ? as : id.username;
+}
+
+export const currentOwner = async () => ownerFrom(await headers());
+
 export const currentIdentity = async () => identityFrom(await headers());
 
 export const hasSparrow = (id: Identity) => id.groups.some((g) => g === "sparrow-user" || g === "sparrow-admin");
