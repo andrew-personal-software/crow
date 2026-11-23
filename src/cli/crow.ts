@@ -5,7 +5,7 @@ import { type Op, OpError, find, view } from "../lib/ops";
 import { VERSION, VERSION_HEADER } from "../lib/version";
 import { ApiError, api, call, serverUrl } from "./http";
 
-const HELP = `crow — read and edit boards on the crow server ($CROW_URL). Output is JSON.
+const HELP = `crow — read and edit boards on the crow server ($CROW_URL, token in $CROW_TOKEN). Output is JSON.
 
   crow ls                                   list boards
   crow new <name>                           create a board
