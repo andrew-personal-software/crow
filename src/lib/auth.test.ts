@@ -30,6 +30,17 @@ describe("identityFrom", () => {
     }
   });
 
+  it("rejects the reserved name assets with 403", () => {
+    process.env.CROW_PROXY_SECRET = "s";
+    expect(() => identityFrom(h({ ...ok, "x-authentik-username": "assets" }))).toThrowError(expect.objectContaining({ status: 403 }));
+  });
+
+  it("treats the example secret as misconfigured in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    process.env.CROW_PROXY_SECRET = "change-me";
+    expect(() => identityFrom(h({ ...ok, "x-crow-proxy-secret": "change-me" }))).toThrowError(expect.objectContaining({ status: 401 }));
+  });
+
   it("makes crow-admin an admin", () => {
     process.env.CROW_PROXY_SECRET = "s";
     expect(identityFrom(h({ ...ok, "x-authentik-groups": "crow-admin" })).admin).toBe(true);

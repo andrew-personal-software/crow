@@ -35,21 +35,21 @@ async function save(all: State) {
   await fs.rename(tmp, stateFile());
 }
 
-/** Counts a message for today (429 past the daily limit). State lives in DATA_DIR/feedback.json. */
-async function count(username: string) {
-  const all = await load();
-  const day = new Date().toISOString().slice(0, 10);
-  const cur = all[username]?.day === day ? all[username].n : 0;
-  if (cur >= DAILY_LIMIT) throw new FeedbackError(429, `limit of ${DAILY_LIMIT} feedback messages a day reached`);
-  all[username] = { day, n: cur + 1, tasks: all[username]?.tasks ?? [] };
-  await save(all);
+const today = () => new Date().toISOString().slice(0, 10);
+
+/** Throws 429 past the daily limit. State lives in DATA_DIR/feedback.json. */
+async function assertUnderLimit(username: string) {
+  const cur = (await load())[username];
+  if (cur?.day === today() && cur.n >= DAILY_LIMIT) {
+    throw new FeedbackError(429, `limit of ${DAILY_LIMIT} feedback messages a day reached`);
+  }
 }
 
-/** A retry may only add files to a task this user's earlier message made. */
-async function remember(username: string, taskId: string) {
+/** Counts a sent message (failed ones do not count) and remembers the task, so only this user can retry onto it. */
+async function record(username: string, taskId: string) {
   const all = await load();
-  const cur = (all[username] ??= { day: "", n: 0, tasks: [] });
-  cur.tasks = [...cur.tasks, taskId].slice(-50);
+  const cur = all[username];
+  all[username] = { day: today(), n: (cur?.day === today() ? cur.n : 0) + 1, tasks: [...(cur?.tasks ?? []), taskId].slice(-50) };
   await save(all);
 }
 
@@ -69,7 +69,7 @@ export async function sendFeedback(id: Identity, input: Input): Promise<{ taskId
   let taskId = input.taskId;
   if (taskId && !(await load())[id.username]?.tasks.includes(taskId)) throw new FeedbackError(400, "unknown feedback task");
   if (!taskId) {
-    await count(id.username);
+    await assertUnderLimit(id.username);
     const reporter = hasSparrow(id) ? id.username : undefined;
     const site = (process.env.CROW_PUBLIC_URL ?? "https://crow.andrewminghanjiang.com").replace(/\/+$/, "");
     const lines = [`Reporter: ${reporter ?? "none"}`, ...(input.board ? [`Board: ${site}/c/${input.board}`] : []), `Crow: ${VERSION}`, "---", text];
@@ -80,7 +80,7 @@ export async function sendFeedback(id: Identity, input: Input): Promise<{ taskId
     }).catch(() => null);
     if (!res?.ok) throw new FeedbackError(502, "could not reach sparrow, try again");
     taskId = ((await res.json()) as { id: string }).id;
-    await remember(id.username, taskId);
+    await record(id.username, taskId);
   }
 
   const failed: number[] = [];
