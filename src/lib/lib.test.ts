@@ -7,7 +7,8 @@ import { POST } from "../app/api/canvas/[id]/ops/route";
 import { proxy } from "../proxy";
 import { compareVersions, VERSION } from "./version";
 import { parsePreview } from "./preview";
-import { createCanvas, resolveDataPath, slug } from "./store";
+import { createCanvas, listCanvases, resolveDataPath, slug } from "./store";
+import { GET as getFile } from "../app/files/[...path]/route";
 
 describe("parsePreview", () => {
   it("reads og tags and resolves relative images", () => {
@@ -30,10 +31,31 @@ describe("parsePreview", () => {
 });
 
 describe("store paths", () => {
-  it("blocks paths outside the data dir", () => {
-    expect(resolveDataPath("../package.json")).toBeNull();
-    expect(resolveDataPath("assets/../../x")).toBeNull();
-    expect(resolveDataPath("assets/a.png")).toMatch(/data\/assets\/a\.png$/);
+  it("blocks paths outside the owner dir", () => {
+    expect(resolveDataPath("ann", "../package.json")).toBeNull();
+    expect(resolveDataPath("ann", "../bob/assets/a.png")).toBeNull();
+    expect(resolveDataPath("ann", "assets/a.png")).toMatch(/data\/ann\/assets\/a\.png$/);
+  });
+
+  it("keeps each owner's boards apart", async () => {
+    process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "crow-"));
+    await createCanvas("ann", "same");
+    await createCanvas("bob", "same");
+    expect(await listCanvases("ann")).toHaveLength(1);
+    expect(await listCanvases("bob")).toHaveLength(1);
+  });
+
+  it("does not serve another owner's files", async () => {
+    process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "crow-"));
+    process.env.CROW_PROXY_SECRET = "s";
+    await fs.mkdir(path.join(process.env.DATA_DIR, "bob/assets"), { recursive: true });
+    await fs.writeFile(path.join(process.env.DATA_DIR, "bob/assets/x.png"), "x");
+    const as = (u: string) => new Request("http://x", { headers: { "x-crow-proxy-secret": "s", "x-authentik-username": u } });
+    const get = (u: string, p: string[]) => getFile(as(u), { params: Promise.resolve({ path: p }) } as never);
+    expect((await get("bob", ["assets", "x.png"])).status).toBe(200);
+    expect((await get("ann", ["assets", "x.png"])).status).toBe(404);
+    expect((await get("ann", ["..", "bob", "assets", "x.png"])).status).toBe(404);
+    delete process.env.CROW_PROXY_SECRET;
   });
 
   it("slugs names", () => {
@@ -69,7 +91,7 @@ describe("proxy", () => {
 describe("ops route", () => {
   it("returns 400 with the op error", async () => {
     process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "crow-"));
-    const id = await createCanvas("t");
+    const id = await createCanvas("dev", "t");
     const body = JSON.stringify([{ op: "rm", ids: ["nope"] }]);
     const res = await POST(new Request("http://x", { method: "POST", body }), { params: Promise.resolve({ id }) });
     expect(res.status).toBe(400);

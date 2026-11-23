@@ -19,6 +19,7 @@ function checkServerVersion(server: string | null) {
 export async function call(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set(VERSION_HEADER, VERSION);
+  if (process.env.CROW_TOKEN) headers.set("Authorization", `Bearer ${process.env.CROW_TOKEN}`);
   if (init.body) headers.set("Content-Type", "application/json");
   let res: Response;
   try {
@@ -28,6 +29,7 @@ export async function call(path: string, init: RequestInit = {}) {
     throw new ApiError(`cannot reach crow at ${serverUrl()} (${cause?.code ?? cause?.message ?? (e as Error).message}). Check CROW_URL`);
   }
   checkServerVersion(res.headers.get(VERSION_HEADER));
+  if (res.status === 401 || res.status === 403) throw new ApiError("not signed in. Set CROW_TOKEN");
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new ApiError(body?.error ?? `server returned ${res.status} ${res.statusText}`);

@@ -1,0 +1,31 @@
+# Add to the Caddyfile. Then for each app (crow, sparrow):
+#   crow.andrewminghanjiang.com {
+#     import authentik_auth 127.0.0.1:3418
+#   }
+# Needs CROW_PROXY_SECRET in Caddy's environment (same value as /etc/crow/crow.env).
+# Sparrow needs its own secret later (Project 4); pass it as the second argument.
+
+auth.andrewminghanjiang.com {
+	reverse_proxy 127.0.0.1:9000
+}
+
+(authentik_auth) {
+	route {
+		# Strip anything the client sent, so identity can only come from Authentik.
+		request_header -X-Authentik-Username
+		request_header -X-Authentik-Groups
+		request_header -X-Authentik-Email
+		request_header -X-Crow-Proxy-Secret
+
+		reverse_proxy /outpost.goauthentik.io/* 127.0.0.1:9000
+
+		forward_auth 127.0.0.1:9000 {
+			uri /outpost.goauthentik.io/auth/caddy
+			copy_headers X-Authentik-Username X-Authentik-Groups X-Authentik-Email
+			trusted_proxies private_ranges
+		}
+
+		request_header X-Crow-Proxy-Secret {env.CROW_PROXY_SECRET}
+		reverse_proxy {args[0]}
+	}
+}

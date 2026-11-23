@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { CanvasSummary } from "@/lib/canvas";
-import { createCanvasAction, deleteCanvasAction, renameCanvasAction } from "./actions";
+import FeedbackButton from "@/components/FeedbackButton";
+import { actAsAction, createCanvasAction, deleteCanvasAction, renameCanvasAction } from "./actions";
 
 function ago(ms: number) {
   const s = Math.max(0, (Date.now() - ms) / 1000);
@@ -15,7 +16,7 @@ function ago(ms: number) {
   return `${Math.floor(s / 604800)}w ago`;
 }
 
-export default function HomeGrid({ canvases }: { canvases: CanvasSummary[] }) {
+export default function HomeGrid({ canvases, owner, owners, storage }: { canvases: CanvasSummary[]; owner: string; owners?: string[]; storage: string }) {
   const router = useRouter();
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
@@ -27,7 +28,10 @@ export default function HomeGrid({ canvases }: { canvases: CanvasSummary[] }) {
 
   async function create() {
     const name = prompt("Canvas name")?.trim();
-    if (name) router.push(`/c/${await createCanvasAction(name)}`);
+    if (!name) return;
+    const r = await createCanvasAction(name);
+    if ("error" in r) alert(r.error);
+    else router.push(`/c/${r.id}`);
   }
 
   async function rename(c: CanvasSummary) {
@@ -51,6 +55,22 @@ export default function HomeGrid({ canvases }: { canvases: CanvasSummary[] }) {
     <>
       <header className="mb-8 flex items-center justify-between">
         <h1 className="text-xl font-semibold tracking-tight">crow</h1>
+        {owners && (
+          <select
+            value={owner}
+            onChange={async (e) => {
+              await actAsAction(e.target.value);
+              router.refresh();
+            }}
+            className="rounded-md border border-stone-300 px-2 py-1 text-sm"
+          >
+            {[...new Set([owner, ...owners])].map((o) => (
+              <option key={o}>{o}</option>
+            ))}
+          </select>
+        )}
+        <span className="text-sm text-stone-400">{storage}</span>
+        <FeedbackButton className="rounded-md px-3 py-1.5 text-sm hover:bg-stone-100" />
         <button
           onClick={create}
           className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700"

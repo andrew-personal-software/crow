@@ -3,22 +3,31 @@ import fs from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
 import { nanoid, customAlphabet } from "nanoid";
+import { assertRoom, invalidate } from "./quota";
 import type { CanvasDoc, CanvasSummary } from "./canvas";
 
 const ID = /^[a-z0-9-]+$/;
 const suffix = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 4);
 
 export const dataDir = () => path.resolve(process.env.DATA_DIR ?? path.join(/*turbopackIgnore: true*/ process.cwd(), "data"));
-const assetsDir = () => path.join(dataDir(), "assets");
+const OWNER = /^[a-z0-9-]+$/;
 
-function canvasPath(id: string) {
+/** One folder per user under DATA_DIR. "assets" is reserved for the pre-migration layout. */
+export function ownerDir(owner: string) {
+  if (!OWNER.test(owner) || owner === "assets") throw new Error(`invalid owner: ${owner}`);
+  return path.join(dataDir(), owner);
+}
+const assetsDir = (owner: string) => path.join(ownerDir(owner), "assets");
+
+function canvasPath(owner: string, id: string) {
   if (!ID.test(id)) throw new Error(`invalid canvas id: ${id}`);
-  return path.join(dataDir(), `${id}.canvas`);
+  return path.join(ownerDir(owner), `${id}.canvas`);
 }
 
-export function resolveDataPath(rel: string): string | null {
-  const full = path.resolve(dataDir(), rel);
-  return full.startsWith(dataDir() + path.sep) ? full : null;
+export function resolveDataPath(owner: string, rel: string): string | null {
+  const base = ownerDir(owner);
+  const full = path.resolve(base, rel);
+  return full.startsWith(base + path.sep) ? full : null;
 }
 
 export function slug(name: string) {
@@ -31,13 +40,21 @@ export function slug(name: string) {
   );
 }
 
-export async function listCanvases(): Promise<CanvasSummary[]> {
+/** Folders that belong to users (for the admin's user switcher). */
+export async function listOwners(): Promise<string[]> {
   await fs.mkdir(dataDir(), { recursive: true });
-  const files = (await fs.readdir(dataDir())).filter((f) => f.endsWith(".canvas"));
+  const entries = await fs.readdir(dataDir(), { withFileTypes: true });
+  return entries.filter((e) => e.isDirectory() && OWNER.test(e.name) && e.name !== "assets").map((e) => e.name).sort();
+}
+
+export async function listCanvases(owner: string): Promise<CanvasSummary[]> {
+  const dir = ownerDir(owner);
+  await fs.mkdir(dir, { recursive: true });
+  const files = (await fs.readdir(dir)).filter((f) => f.endsWith(".canvas"));
   const out = await Promise.all(
     files.map(async (f) => {
       const id = f.slice(0, -".canvas".length);
-      const full = path.join(dataDir(), f);
+      const full = path.join(dir, f);
       const { mtimeMs } = await fs.stat(full);
       try {
         const doc = JSON.parse(await fs.readFile(full, "utf8")) as CanvasDoc;
@@ -54,10 +71,10 @@ const version = (raw: string) => createHash("sha1").update(raw).digest("hex").sl
 
 export class Conflict extends Error {}
 
-export async function loadCanvas(id: string): Promise<{ doc: CanvasDoc; version: string } | null> {
+export async function loadCanvas(owner: string, id: string): Promise<{ doc: CanvasDoc; version: string } | null> {
   if (!ID.test(id)) return null;
   try {
-    const raw = await fs.readFile(canvasPath(id), "utf8");
+    const raw = await fs.readFile(canvasPath(owner, id), "utf8");
     const doc = JSON.parse(raw);
     return { doc: { ...doc, nodes: doc.nodes ?? [], edges: doc.edges ?? [] }, version: version(raw) };
   } catch {
@@ -65,8 +82,8 @@ export async function loadCanvas(id: string): Promise<{ doc: CanvasDoc; version:
   }
 }
 
-export async function readCanvas(id: string) {
-  return (await loadCanvas(id))?.doc ?? null;
+export async function readCanvas(owner: string, id: string) {
+  return (await loadCanvas(owner, id))?.doc ?? null;
 }
 
 /** Cross-process lock (the app and CLI processes share it), so check-then-write can't interleave. */
@@ -92,25 +109,28 @@ async function locked<T>(file: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /** Writes atomically. With `base`, throws Conflict if the file changed since that version. Returns the new version. */
-export async function writeCanvas(id: string, doc: CanvasDoc, base?: string) {
-  await fs.mkdir(dataDir(), { recursive: true });
-  const file = canvasPath(id);
+export async function writeCanvas(owner: string, id: string, doc: CanvasDoc, base?: string) {
+  await fs.mkdir(ownerDir(owner), { recursive: true });
+  const file = canvasPath(owner, id);
   return locked(file, async () => {
     if (base) {
       const cur = await fs.readFile(file, "utf8").catch(() => null);
       if (cur !== null && version(cur) !== base) throw new Conflict();
     }
     const raw = JSON.stringify(doc, null, "\t");
+    const before = await fs.stat(file).then((s) => s.size, () => 0);
+    await assertRoom(owner, raw.length - before);
     const tmp = `${file}.${suffix()}.tmp`;
     await fs.writeFile(tmp, raw);
     await fs.rename(tmp, file);
+    invalidate(owner);
     return version(raw);
   });
 }
 
-export async function createCanvas(name: string) {
+export async function createCanvas(owner: string, name: string) {
   const id = `${slug(name)}-${suffix()}`;
-  await writeCanvas(id, { name, nodes: [], edges: [] });
+  await writeCanvas(owner, id, { name, nodes: [], edges: [] });
   return id;
 }
 
@@ -118,13 +138,13 @@ export async function createCanvas(name: string) {
  * Load-modify-save with the version check, retrying if someone else saved in between.
  * `fn` edits the doc in place or returns a new one. Returns the new version, or null if the canvas is missing.
  */
-export async function updateCanvas(id: string, fn: (doc: CanvasDoc) => CanvasDoc | void | Promise<CanvasDoc | void>) {
+export async function updateCanvas(owner: string, id: string, fn: (doc: CanvasDoc) => CanvasDoc | void | Promise<CanvasDoc | void>) {
   for (let attempt = 0; attempt < 20; attempt++) {
-    const loaded = await loadCanvas(id);
+    const loaded = await loadCanvas(owner, id);
     if (!loaded) return null;
     const next = (await fn(loaded.doc)) ?? loaded.doc;
     try {
-      return await writeCanvas(id, next, loaded.version);
+      return await writeCanvas(owner, id, next, loaded.version);
     } catch (e) {
       if (!(e instanceof Conflict)) throw e;
       await sleep(Math.random() * 10 * (attempt + 1));
@@ -133,18 +153,31 @@ export async function updateCanvas(id: string, fn: (doc: CanvasDoc) => CanvasDoc
   throw new Conflict("canvas kept changing, try again");
 }
 
-export async function renameCanvas(id: string, name: string) {
-  await updateCanvas(id, (doc) => ({ ...doc, name }));
+export async function renameCanvas(owner: string, id: string, name: string) {
+  await updateCanvas(owner, id, (doc) => ({ ...doc, name }));
 }
 
-export async function deleteCanvas(id: string) {
-  await fs.rm(canvasPath(id), { force: true });
+const assetsOf = (doc: CanvasDoc | null) =>
+  new Set((doc?.nodes ?? []).flatMap((n) => (n.type === "file" && /^assets\/[^/\\]+$/.test(n.file) ? [n.file] : [])));
+
+/** Deletes the board and any of its asset files that no other board of this owner uses. */
+export async function deleteCanvas(owner: string, id: string) {
+  const mine = assetsOf((await loadCanvas(owner, id))?.doc ?? null);
+  await fs.rm(canvasPath(owner, id), { force: true });
+  if (mine.size) {
+    const others = await listCanvases(owner);
+    for (const o of others) for (const a of assetsOf((await loadCanvas(owner, o.id))?.doc ?? null)) mine.delete(a);
+    for (const a of mine) await fs.rm(path.join(ownerDir(owner), path.normalize(a)), { force: true });
+  }
+  invalidate(owner);
 }
 
-export async function saveAsset(file: File): Promise<string> {
-  await fs.mkdir(assetsDir(), { recursive: true });
+export async function saveAsset(owner: string, file: File): Promise<string> {
+  await assertRoom(owner, file.size);
+  await fs.mkdir(assetsDir(owner), { recursive: true });
   const safe = file.name.replace(/[^\w.-]+/g, "_").slice(-80) || "file";
   const name = `${nanoid(8)}-${safe}`;
-  await fs.writeFile(path.join(assetsDir(), name), Buffer.from(await file.arrayBuffer()));
+  await fs.writeFile(path.join(assetsDir(owner), name), Buffer.from(await file.arrayBuffer()));
+  invalidate(owner);
   return `assets/${name}`;
 }

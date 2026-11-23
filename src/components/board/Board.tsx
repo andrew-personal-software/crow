@@ -66,6 +66,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
   const [tool, setTool] = useState<Tool>("select");
   const [ghost, setGhost] = useState<Ghost>(null);
   const [status, setStatus] = useState<"saved" | "saving" | "error">("saved");
+  const [errorMsg, setErrorMsg] = useState("");
   const [renaming, setRenaming] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -121,7 +122,10 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
       if (changes.length) {
         const body = JSON.stringify(changes);
         const r = await fetch(`/api/canvas/${id}`, { method: "PATCH", body, keepalive: body.length < 60000 });
-        if (!r.ok) return setStatus("error");
+        if (!r.ok) {
+          setErrorMsg(r.status === 413 ? ((await r.json().catch(() => null))?.error ?? "storage full") : "");
+          return setStatus("error");
+        }
         synced.current = applyChanges(synced.current, changes, "after");
         version.current = r.headers.get("x-version") ?? version.current;
       }
@@ -201,7 +205,11 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
       const body = new FormData();
       body.append("file", file);
       const res = await fetch("/api/assets", { method: "POST", body });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        setErrorMsg(res.status === 413 ? ((await res.json().catch(() => null))?.error ?? "storage full") : `could not upload ${file.name}`);
+        setStatus("error");
+        continue;
+      }
       const { path } = (await res.json()) as { path: string };
       const kind = fileKind(path);
       const size =
@@ -550,7 +558,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
           </button>
         )}
         <span className={`ml-auto ${status === "error" ? "text-red-600" : "text-stone-400"}`}>
-          {status === "saving" ? "saving…" : status === "error" ? "save failed" : ""}
+          {status === "saving" ? "saving…" : status === "error" ? errorMsg || "save failed" : ""}
         </span>
         <Help />
       </header>
@@ -597,6 +605,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
           zoom={view.zoom}
           onTool={setTool}
           onResetZoom={resetZoom}
+          board={id}
           onFiles={(files) => addFiles(files, viewportCenter())}
         />
       </div>
