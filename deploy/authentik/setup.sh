@@ -20,5 +20,7 @@ install -m 644 "$here"/authentik-server.container "$here"/authentik-worker.conta
 install -m 755 "$here"/backup.sh /usr/local/bin/authentik-backup
 install -m 644 "$here"/authentik-backup.service "$here"/authentik-backup.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now authentik-server authentik-worker authentik-backup.timer
+# Quadlet units are generated, so they cannot be enabled: [Install] in the .container file starts them at boot.
+systemctl start authentik-server authentik-worker
+systemctl enable --now authentik-backup.timer
 echo "Authentik starting on 127.0.0.1:9000. Add Caddyfile.snippet to Caddy, then open https://auth.andrewminghanjiang.com/if/flow/initial-setup/"
