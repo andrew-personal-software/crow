@@ -1,7 +1,8 @@
 # Quadlet unit. Install to /etc/containers/systemd/ (setup.sh does this).
 [Unit]
 Description=Authentik server
-After=network-online.target postgresql.service
+After=network-online.target postgres.service
+Wants=postgres.service
 
 [Container]
 Image=ghcr.io/goauthentik/server:2025.10
