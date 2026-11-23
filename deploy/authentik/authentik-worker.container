@@ -1,0 +1,17 @@
+[Unit]
+Description=Authentik worker
+After=network-online.target postgresql.service
+
+[Container]
+Image=ghcr.io/goauthentik/server:2025.10
+Exec=worker
+Network=host
+EnvironmentFile=/etc/authentik/authentik.env
+Volume=/var/lib/authentik/media:/media:Z
+Volume=/var/lib/authentik/templates:/templates:Z
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
