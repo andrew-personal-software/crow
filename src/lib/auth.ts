@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { headers } from "next/headers";
 
 export type Identity = { username: string; admin: boolean; groups: string[] };
@@ -12,18 +13,21 @@ export class AuthError extends Error {
 }
 
 const USERNAME = /^[a-z0-9-]+$/;
+const safeEqual = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const RESERVED = new Set(["assets"]);
 
 /** Reads the user Authentik put in the headers. Without CROW_PROXY_SECRET (dev only) it uses CROW_DEV_USER. */
 export function identityFrom(h: Headers): Identity {
   const secret = process.env.CROW_PROXY_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV === "production") throw new AuthError(401, "server misconfigured: CROW_PROXY_SECRET is not set");
+  const production = process.env.NODE_ENV === "production";
+  if (!secret || (production && secret === "change-me")) {
+    if (production) throw new AuthError(401, "server misconfigured: set CROW_PROXY_SECRET");
     return { username: process.env.CROW_DEV_USER ?? "dev", admin: true, groups: ["crow-admin"] };
   }
-  if (h.get("x-crow-proxy-secret") !== secret) throw new AuthError(401, "not signed in");
+  if (!safeEqual(h.get("x-crow-proxy-secret") ?? "", secret)) throw new AuthError(401, "not signed in");
   const username = h.get("x-authentik-username");
   if (!username) throw new AuthError(401, "not signed in");
-  if (!USERNAME.test(username)) throw new AuthError(403, "invalid username");
+  if (!USERNAME.test(username) || RESERVED.has(username)) throw new AuthError(403, "invalid username");
   const groups = (h.get("x-authentik-groups") ?? "").split("|").filter(Boolean);
   return { username, admin: groups.includes("crow-admin"), groups };
 }

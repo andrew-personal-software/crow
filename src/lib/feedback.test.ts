@@ -67,6 +67,13 @@ describe("sendFeedback", () => {
     await expect(sendFeedback(ann, { text: "hi", files: [] })).resolves.toMatchObject({ taskId: "CROW-1" });
   });
 
+  it("does not count a message when sparrow is down", async () => {
+    vi.stubGlobal("fetch", async () => new Response("no", { status: 500 }));
+    for (let i = 0; i < 25; i++) await sendFeedback(ann, { text: "hi", files: [] }).catch(() => {});
+    vi.stubGlobal("fetch", async () => Response.json({ id: "CROW-1" }));
+    await expect(sendFeedback(ann, { text: "hi", files: [] })).resolves.toMatchObject({ taskId: "CROW-1" });
+  });
+
   it("rejects empty text and too many files", async () => {
     await expect(sendFeedback(ann, { text: " ", files: [] })).rejects.toMatchObject({ status: 400 });
     await expect(sendFeedback(ann, { text: "x", files: Array(6).fill(png()) })).rejects.toMatchObject({ status: 400 });

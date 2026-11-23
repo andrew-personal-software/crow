@@ -16,7 +16,13 @@ async function main() {
   }
   await fs.mkdir(dest, { recursive: true });
   for (const f of moves) {
-    await fs.rename(path.join(root, f), path.join(dest, f));
+    const to = path.join(dest, f);
+    if (f === "assets" && (await fs.stat(to).then(() => true, () => false))) {
+      for (const a of await fs.readdir(path.join(root, f))) await fs.rename(path.join(root, f, a), path.join(to, a));
+      await fs.rmdir(path.join(root, f));
+    } else {
+      await fs.rename(path.join(root, f), to);
+    }
     console.log(`moved ${f} -> ${owner}/`);
   }
 }
